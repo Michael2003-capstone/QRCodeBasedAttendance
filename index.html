@@ -1016,20 +1016,17 @@ document.getElementById('btn-stop-scan').addEventListener('click', stopScanner);
 function startScanner(){
   if(scanning) return;
   html5QrCode = new Html5Qrcode('qr-reader');
-  Html5Qrcode.getCameras().then(cams=>{
-    if(!cams || !cams.length){ toast('No camera found on this device.', 'error'); return; }
-    const camId = cams[cams.length-1].id;
-    html5QrCode.start(
-      camId,
-      { fps: 10, qrbox: 220 },
-      onScanSuccess,
-      ()=>{}
-    ).then(()=>{
-      scanning = true;
-      document.getElementById('btn-start-scan').disabled = true;
-      document.getElementById('btn-stop-scan').disabled = false;
-    }).catch(()=> toast('Could not start camera. Check permissions.', 'error'));
-  }).catch(()=> toast('Camera access denied or unavailable.', 'error'));
+
+  html5QrCode.start(
+    { facingMode: "user" }, 
+    { fps: 10, qrbox: 220 },
+    onScanSuccess,
+    ()=>{}
+  ).then(()=>{
+    scanning = true;
+    document.getElementById('btn-start-scan').disabled = true;
+    document.getElementById('btn-stop-scan').disabled = false;
+  }).catch(()=> toast('Could not start camera. Check permissions.', 'error'));
 }
 function stopScanner(){
   if(html5QrCode && scanning){
