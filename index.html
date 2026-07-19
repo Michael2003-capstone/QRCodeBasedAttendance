@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roll Call — QR Attendance System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<style>
+  :root{
+    --ink:#1B2A4A;
+    --ink-2:#233657;
+    --paper:#F7F5F0;
+    --card:#FFFFFF;
+    --amber:#E8A33D;
+    --amber-dark:#C7822A;
+    --green:#2F9E68;
+    --red:#D64545;
+    --slate:#6B7280;
+    --line:#E7E2D8;
+    --radius:14px;
+    --shadow: 0 1px 2px rgba(27,42,74,.06), 0 8px 24px -12px rgba(27,42,74,.18);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    font-family:'Inter',system-ui,sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,.brand,.nav-item span{font-family:'Sora',sans-serif;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+
+  .app{display:flex; min-height:100vh;}
+
+  /* Sidebar */
+  .sidebar{
+    width:230px; flex-shrink:0;
+    background:linear-gradient(180deg,var(--ink),var(--ink-2));
+    color:#fff; display:flex; flex-direction:column;
+    position:sticky; top:0; height:100vh;
+  }
+  .brand{padding:24px 20px 18px; display:flex; align-items:center; gap:10px; border-bottom:1px solid rgba(255,255,255,.1);}
+  .brand-mark{
+    width:34px;height:34px;border-radius:9px;background:var(--amber);
+    display:flex;align-items:center;justify-content:center;color:var(--ink);font-weight:800;font-size:15px;
+    box-shadow: 0 0 0 3px rgba(232,163,61,.25);
+  }
+  .brand-text{font-weight:700; font-size:16.5px; letter-spacing:.2px;}
+  .brand-sub{display:block; font-family:'Inter'; font-weight:400; font-size:10.5px; color:rgba(255,255,255,.55); letter-spacing:.6px; text-transform:uppercase;}
+
+  .nav{padding:16px 12px; display:flex; flex-direction:column; gap:3px; flex:1;}
+  .nav-item{
+    display:flex; align-items:center; gap:11px; padding:10px 12px; border-radius:10px;
+    color:rgba(255,255,255,.75); cursor:pointer; font-size:14px; font-weight:500; transition:.15s;
+    border:1px solid transparent;
+  }
+  .nav-item svg{width:18px;height:18px; flex-shrink:0; opacity:.9;}
+  .nav-item:hover{background:rgba(255,255,255,.06); color:#fff;}
+  .nav-item.active{background:rgba(232,163,61,.14); color:#fff; border-color:rgba(232,163,61,.35);}
+  .nav-item.active svg{color:var(--amber);}
+  .nav-foot{padding:16px; border-top:1px solid rgba(255,255,255,.1); font-size:11px; color:rgba(255,255,255,.4);}
+
+  /* Main */
+  main{flex:1; padding:28px 34px 60px; max-width:1180px;}
+  .page{display:none; animation:fade .25s ease;}
+  .page.active{display:block;}
+  @keyframes fade{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;}}
+
+  .page-head{display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:22px; flex-wrap:wrap; gap:12px;}
+  .page-head h1{font-size:23px; margin:0 0 4px;}
+  .page-head p{margin:0; color:var(--slate); font-size:13.5px;}
+  .eyebrow{font-size:11px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:var(--amber-dark); margin:0 0 6px;}
+
+  .btn{
+    border:none; border-radius:10px; padding:10px 16px; font-family:'Inter'; font-weight:600; font-size:13.5px;
+    cursor:pointer; display:inline-flex; align-items:center; gap:7px; transition:.15s;
+  }
+  .btn svg{width:15px;height:15px;}
+  .btn-primary{background:var(--ink); color:#fff;}
+  .btn-primary:hover{background:var(--ink-2);}
+  .btn-amber{background:var(--amber); color:var(--ink);}
+  .btn-amber:hover{background:var(--amber-dark); color:#fff;}
+  .btn-ghost{background:transparent; color:var(--ink); border:1px solid var(--line);}
+  .btn-ghost:hover{background:#fff; border-color:var(--ink);}
+  .btn-danger{background:#FDEBEB; color:var(--red);}
+  .btn-danger:hover{background:var(--red); color:#fff;}
+  .btn-sm{padding:6px 10px; font-size:12px; border-radius:8px;}
+  .btn:disabled{opacity:.5; cursor:not-allowed;}
+
+  /* Cards / grid */
+  .grid{display:grid; gap:16px;}
+  .grid-4{grid-template-columns:repeat(4,1fr);}
+  .grid-2{grid-template-columns:1.3fr .9fr;}
+  @media(max-width:900px){.grid-4{grid-template-columns:repeat(2,1fr);} .grid-2{grid-template-columns:1fr;}}
+
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow);}
+  .card-pad{padding:20px;}
+
+  .stat{padding:18px 20px;}
+  .stat .num{font-family:'Sora'; font-size:28px; font-weight:700; line-height:1;}
+  .stat .lbl{color:var(--slate); font-size:12.5px; margin-top:6px; font-weight:500;}
+  .stat .icon{width:34px;height:34px;border-radius:9px; display:flex;align-items:center;justify-content:center; margin-bottom:12px;}
+  .stat .icon svg{width:17px;height:17px;}
+
+  table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  thead th{
+    text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--slate);
+    font-weight:600; padding:10px 14px; border-bottom:1px solid var(--line); background:#FBFAF7;
+  }
+  tbody td{padding:11px 14px; border-bottom:1px solid var(--line); vertical-align:middle;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:#FBFAF7;}
+  .table-wrap{overflow-x:auto; border-radius:var(--radius); border:1px solid var(--line);}
+  .table-wrap table{border:none;}
+
+  .avatar{width:34px;height:34px;border-radius:50%; object-fit:cover; background:#EEE; border:1px solid var(--line); flex-shrink:0;}
+  .avatar-lg{width:76px;height:76px;}
+  .name-cell{display:flex; align-items:center; gap:10px;}
+
+  .badge{display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:100px; font-size:11.5px; font-weight:600;}
+  .badge-in{background:#E7F7EF; color:var(--green);}
+  .badge-out{background:#EAF0FF; color:#3457D5;}
+  .badge-pending{background:#FDF3E3; color:var(--amber-dark);}
+  .badge-grade{background:#F0EEE8; color:var(--ink); font-family:'IBM Plex Mono'; font-weight:500;}
+
+  input,select{
+    width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:9px; font-family:'Inter'; font-size:13.5px;
+    background:#fff; color:var(--ink);
+  }
+  input:focus, select:focus{outline:2px solid var(--amber); outline-offset:1px; border-color:var(--amber);}
+  label{font-size:12.5px; font-weight:600; color:var(--ink-2); margin-bottom:6px; display:block;}
+  .field{margin-bottom:16px;}
+  .field-row{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  .hint{font-size:11.5px; color:var(--slate); margin-top:5px;}
+
+  .filters{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; align-items:flex-end;}
+  .filters .field{margin-bottom:0; min-width:150px;}
+  .search{position:relative; flex:1; min-width:180px;}
+  .search svg{position:absolute; left:11px; top:50%; transform:translateY(-50%); width:14px;height:14px; color:var(--slate);}
+  .search input{padding-left:32px;}
+
+  .empty{text-align:center; padding:48px 20px; color:var(--slate);}
+  .empty svg{width:38px;height:38px; margin-bottom:10px; opacity:.5;}
+  .empty strong{display:block; color:var(--ink); font-size:14.5px; margin-bottom:4px;}
+
+  /* Photo upload */
+  .photo-upload{display:flex; align-items:center; gap:16px; margin-bottom:18px;}
+  .photo-drop{
+    width:76px;height:76px;border-radius:50%; border:2px dashed var(--line); background:#FBFAF7;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; flex-shrink:0; position:relative;
+  }
+  .photo-drop img{width:100%;height:100%;object-fit:cover;}
+  .photo-drop svg{width:20px;height:20px; color:var(--slate);}
+
+  /* Badge / QR modal */
+  .overlay{
+    position:fixed; inset:0; background:rgba(27,42,74,.55); display:none; align-items:center; justify-content:center;
+    z-index:100; padding:20px; backdrop-filter:blur(2px);
+  }
+  .overlay.show{display:flex;}
+  .modal{background:#fff; border-radius:16px; max-width:400px; width:100%; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.3);}
+  .modal-head{display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid var(--line);}
+  .modal-head h3{margin:0; font-size:15px;}
+  .modal-close{cursor:pointer; background:none; border:none; color:var(--slate); font-size:18px; line-height:1;}
+  .modal-body{padding:22px;}
+
+  .id-badge{
+    background:var(--ink); color:#fff; border-radius:16px; padding:22px 20px 26px; text-align:center; position:relative;
+    background-image: radial-gradient(circle at 50% 100%, rgba(232,163,61,.18), transparent 60%);
+  }
+  .id-badge .hole{width:34px;height:9px; border-radius:100px; background:rgba(0,0,0,.35); margin:0 auto 14px;}
+  .id-badge .avatar-lg{margin:0 auto 10px; border:3px solid rgba(255,255,255,.2);}
+  .id-badge .bname{font-family:'Sora'; font-weight:700; font-size:16px;}
+  .id-badge .bmeta{font-size:12px; color:rgba(255,255,255,.65); margin-top:2px; font-family:'IBM Plex Mono';}
+  .perforation{border-top:2px dashed rgba(255,255,255,.25); margin:16px 0; position:relative;}
+  .perforation::before,.perforation::after{
+    content:''; position:absolute; top:-9px; width:18px;height:18px;border-radius:50%; background:var(--paper);
+  }
+  .perforation::before{left:-20px;}
+  .perforation::after{right:-20px;}
+  .qr-wrap{background:#fff; border-radius:10px; padding:12px; display:inline-block;}
+  .id-badge .sid{margin-top:10px; font-size:10.5px; letter-spacing:1px; color:rgba(255,255,255,.55); font-family:'IBM Plex Mono';}
+  .modal-actions{display:flex; gap:8px; margin-top:18px;}
+  .modal-actions .btn{flex:1; justify-content:center;}
+
+  /* Toast */
+  #toast-container{position:fixed; bottom:20px; right:20px; z-index:200; display:flex; flex-direction:column; gap:8px;}
+  .toast{
+    background:var(--ink); color:#fff; padding:12px 16px; border-radius:10px; font-size:13px; box-shadow:var(--shadow);
+    display:flex; align-items:center; gap:9px; min-width:220px; max-width:340px; animation:toastin .2s ease;
+  }
+  .toast.success{background:var(--green);}
+  .toast.error{background:var(--red);}
+  .toast.info{background:var(--ink);}
+  @keyframes toastin{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:none;}}
+
+  /* Scanner page */
+  .scan-layout{display:grid; grid-template-columns:1fr 1fr; gap:20px;}
+  @media(max-width:900px){.scan-layout{grid-template-columns:1fr;}}
+  #qr-reader{border-radius:12px; overflow:hidden; border:1px solid var(--line); background:#000;}
+  .scan-result{
+    border-radius:12px; padding:18px; text-align:center; min-height:110px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:6px; transition:.2s;
+    background:#FBFAF7; border:1px solid var(--line);
+  }
+  .scan-result.flash-in{background:#E7F7EF; border-color:var(--green);}
+  .scan-result.flash-out{background:#EAF0FF; border-color:#3457D5;}
+  .scan-result.flash-err{background:#FDEBEB; border-color:var(--red);}
+  .scan-result .icon-circle{width:44px;height:44px;border-radius:50%; display:flex;align-items:center;justify-content:center; background:#fff; margin-bottom:2px;}
+  .scan-log{max-height:230px; overflow-y:auto;}
+  .scan-log-item{display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--line); font-size:13px;}
+  .scan-log-item:last-child{border-bottom:none;}
+
+  .section-title{font-size:14px; font-weight:700; margin:0 0 12px; display:flex; align-items:center; gap:8px;}
+  .section-title svg{width:16px;height:16px; color:var(--amber-dark);}
+
+  .config-note{background:#FDF3E3; border:1px solid #F0DBAA; color:#8A5A17; border-radius:10px; padding:11px 14px; font-size:12.5px; margin-bottom:16px; line-height:1.5;}
+  .config-note b{display:block; margin-bottom:2px;}
+
+  .status-line{display:flex; align-items:center; gap:7px; font-size:12px; margin-bottom:14px;}
+  .status-dot{width:8px;height:8px;border-radius:50%; background:var(--slate); flex-shrink:0;}
+  .status-dot.ok{background:var(--green);}
+  .status-dot.bad{background:var(--red);}
+
+  ::-webkit-scrollbar{width:9px; height:9px;}
+  ::-webkit-scrollbar-thumb{background:#D8D2C4; border-radius:10px;}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">R</div>
+      <div>
+        <div class="brand-text">Roll Call</div>
+        <span class="brand-sub">QR Attendance</span>
+      </div>
+    </div>
+    <nav class="nav">
+      <div class="nav-item active" data-page="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9"/><path d="M5 10v10h14V10"/></svg>
+        <span>Home</span>
+      </div>
+      <div class="nav-item" data-page="students">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-4 3-6.5 6.5-6.5s6.5 2.5 6.5 6.5"/><circle cx="18" cy="8.5" r="2.4"/><path d="M15.5 13.3c2.8.2 5 2.4 5 6.7"/></svg>
+        <span>Student List</span>
+      </div>
+      <div class="nav-item" data-page="attendance">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M7.5 13.5l2 2 4-4.2"/></svg>
+        <span>Attendance</span>
+      </div>
+      <div class="nav-item" data-page="add">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-4 3-6.5 6.5-6.5"/><path d="M17 8v6M14 11h6"/></svg>
+        <span>Add Student</span>
+      </div>
+      <div class="nav-item" data-page="scan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8V5a1 1 0 011-1h3M20 8V5a1 1 0 00-1-1h-3M4 16v3a1 1 0 001 1h3M20 16v3a1 1 0 01-1 1h-3"/><path d="M4 12h16" stroke-dasharray="2 2"/></svg>
+        <span>Scan QR</span>
+      </div>
+    </nav>
+    <div class="nav-foot">All data stored locally in this browser.</div>
+  </aside>
+
+  <!-- MAIN -->
+  <main>
+
+    <!-- HOME -->
+    <section class="page active" id="page-home">
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">Dashboard</p>
+          <h1>Good day 👋</h1>
+          <p id="today-date-line"></p>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-ghost" data-goto="scan">Open Scanner</button>
+          <button class="btn btn-amber" data-goto="add">+ Add Student</button>
+        </div>
+      </div>
+
+      <div class="grid grid-4" style="margin-bottom:18px;">
+        <div class="card stat">
+          <div class="icon" style="background:#EFEBFF;"><svg viewBox="0 0 24 24" fill="none" stroke="#6C4FDE" stroke-width="2"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-4 3-6.5 6.5-6.5s6.5 2.5 6.5 6.5"/></svg></div>
+          <div class="num" id="stat-total">0</div>
+          <div class="lbl">Total students</div>
+        </div>
+        <div class="card stat">
+          <div class="icon" style="background:#E7F7EF;"><svg viewBox="0 0 24 24" fill="none" stroke="#2F9E68" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg></div>
+          <div class="num" id="stat-present">0</div>
+          <div class="lbl">Present today</div>
+        </div>
+        <div class="card stat">
+          <div class="icon" style="background:#FDF3E3;"><svg viewBox="0 0 24 24" fill="none" stroke="#C7822A" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div>
+          <div class="num" id="stat-pending">0</div>
+          <div class="lbl">Time-in only (not out)</div>
+        </div>
+        <div class="card stat">
+          <div class="icon" style="background:#EAF0FF;"><svg viewBox="0 0 24 24" fill="none" stroke="#3457D5" stroke-width="2"><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 10h18"/></svg></div>
+          <div class="num" id="stat-sections">0</div>
+          <div class="lbl">Grade &amp; section groups</div>
+        </div>
+      </div>
+
+      <div class="card card-pad">
+        <h3 class="section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>Today's activity</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Student</th><th>Grade / Section</th><th>Time in</th><th>Time out</th></tr></thead>
+            <tbody id="home-activity-body"></tbody>
+          </table>
+        </div>
+        <div class="empty" id="home-activity-empty" style="display:none;">
+          <strong>No scans yet today</strong>
+          Head to the QR Scanner page once students start checking in.
+        </div>
+      </div>
+    </section>
+
+    <!-- STUDENT LIST -->
+    <section class="page" id="page-students">
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">Roster</p>
+          <h1>Student List</h1>
+          <p>Every registered student and their QR badge.</p>
+        </div>
+        <button class="btn btn-amber" data-goto="add">+ Add Student</button>
+      </div>
+
+      <div class="filters">
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input type="text" id="stu-search" placeholder="Search by name or email...">
+        </div>
+        <div class="field"><label>Grade</label><select id="stu-filter-grade"><option value="">All grades</option></select></div>
+        <div class="field"><label>Section</label><select id="stu-filter-section"><option value="">All sections</option></select></div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Student</th><th>Grade</th><th>Section</th><th>Email</th><th>QR</th><th></th></tr></thead>
+          <tbody id="student-table-body"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="student-empty" style="display:none;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-4 3-6.5 6.5-6.5s6.5 2.5 6.5 6.5"/></svg>
+        <strong>No students found</strong>
+        Add your first student to generate their QR badge.
+      </div>
+    </section>
+
+    <!-- ATTENDANCE -->
+    <section class="page" id="page-attendance">
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">Records</p>
+          <h1>Attendance Record</h1>
+          <p>Time in is the first scan of the day, time out is the second.</p>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-ghost" id="btn-export-all"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>Export all (grouped)</button>
+          <button class="btn btn-amber" id="btn-export-filtered"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>Export view as Excel</button>
+        </div>
+      </div>
+
+      <div class="filters">
+        <div class="field"><label>Grade</label><select id="att-filter-grade"><option value="">All grades</option></select></div>
+        <div class="field"><label>Section</label><select id="att-filter-section"><option value="">All sections</option></select></div>
+        <div class="field"><label>Date</label><input type="date" id="att-filter-date"></div>
+        <div class="field"><label>&nbsp;</label><button class="btn btn-ghost" id="att-clear-date">Show all dates</button></div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Student</th><th>Grade</th><th>Section</th><th>Date</th><th>Time in</th><th>Time out</th><th>Status</th></tr></thead>
+          <tbody id="attendance-table-body"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="attendance-empty" style="display:none;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/></svg>
+        <strong>No attendance records</strong>
+        Records appear here once students scan their QR badge.
+      </div>
+    </section>
+
+    <!-- ADD STUDENT -->
+    <section class="page" id="page-add">
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">Registration</p>
+          <h1>Add Student</h1>
+          <p>A unique QR badge is generated automatically after saving.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-2">
+        <div class="card card-pad">
+          <div class="photo-upload">
+            <label class="photo-drop" id="photo-drop">
+              <img id="photo-preview" style="display:none;">
+              <svg id="photo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 16l-5-4-4 3-3-2-6 5"/></svg>
+              <input type="file" accept="image/*" id="photo-input" style="display:none;">
+            </label>
+            <div>
+              <div style="font-weight:600; font-size:13.5px;">Profile photo</div>
+              <div class="hint">Click the circle to upload (optional)</div>
+            </div>
+          </div>
+
+          <div class="field"><label>Full name</label><input type="text" id="in-name" placeholder="e.g. Maria Santos"></div>
+          <div class="field-row">
+            <div class="field"><label>Grade level</label>
+              <select id="in-grade">
+                <option value="">Select grade</option>
+                <option>Grade 7</option><option>Grade 8</option><option>Grade 9</option>
+                <option>Grade 10</option><option>Grade 11</option><option>Grade 12</option>
+              </select>
+            </div>
+            <div class="field"><label>Section</label><input type="text" id="in-section" placeholder="e.g. Aster"></div>
+          </div>
+          <div class="field"><label>Email address</label><input type="email" id="in-email" placeholder="student@example.com"></div>
+          <div class="hint" style="margin-bottom:16px;">The QR code will be emailed to this address once configured below (see Email delivery settings).</div>
+          <button class="btn btn-primary" id="btn-add-student"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 8v6M14 11h6"/><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-4 3-6.5 6.5-6.5"/></svg>Add Student &amp; Generate QR</button>
+        </div>
+
+        <div class="card card-pad">
+          <h3 class="section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z"/><path d="M14 14h2v2h-2zM18 14h2v6h-6v-2h4z"/></svg>Email delivery settings</h3>
+          <div class="status-line"><span class="status-dot" id="emailjs-status-dot"></span><span id="emailjs-status-text">Checking EmailJS library…</span></div>
+          <div class="config-note">
+            <b>Optional — no backend required</b>
+            This is a static, browser-only app, so sending real email needs a client-side email service. It uses <span class="mono">EmailJS</span> if you supply your own free account keys below. Without keys, the QR is still generated and can be downloaded, printed, or shared manually.
+          </div>
+          <div class="field"><label>EmailJS Service ID</label><input type="text" id="cfg-service" placeholder="service_xxxxxxx"></div>
+          <div class="field"><label>EmailJS Template ID</label><input type="text" id="cfg-template" placeholder="template_xxxxxxx"></div>
+          <div class="field"><label>EmailJS Public Key</label><input type="text" id="cfg-key" placeholder="public key"></div>
+          <div class="hint" style="margin-bottom:14px;">Sends <span class="mono">name</span>, <span class="mono">title</span>, <span class="mono">grade</span>, <span class="mono">subject</span>, and <span class="mono">qr-code</span> (a base64 image string — in your template, use it as an image source, e.g. <span class="mono">&lt;img src="{{qr-code}}"&gt;</span>) plus <span class="mono">to_email</span>/<span class="mono">email</span> for the recipient field.</div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button class="btn btn-ghost btn-sm" id="btn-save-cfg">Save settings</button>
+            <button class="btn btn-ghost btn-sm" id="btn-test-email">Send test email</button>
+            <span id="cfg-status" class="hint"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCAN -->
+    <section class="page" id="page-scan">
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">Live scanning</p>
+          <h1>QR Code Scanner</h1>
+          <p>First scan of the day marks time in, the second marks time out.</p>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-primary" id="btn-start-scan">Start camera</button>
+          <button class="btn btn-ghost" id="btn-stop-scan" disabled>Stop</button>
+        </div>
+      </div>
+
+      <div class="scan-layout">
+        <div class="card card-pad">
+          <h3 class="section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8V5a1 1 0 011-1h3M20 8V5a1 1 0 00-1-1h-3M4 16v3a1 1 0 001 1h3M20 16v3a1 1 0 01-1 1h-3"/></svg>Camera</h3>
+          <div id="qr-reader"></div>
+          <div class="hint" style="margin-top:10px;">Allow camera access when prompted. Point the badge's QR code at the frame.</div>
+        </div>
+
+        <div>
+          <div class="card card-pad" style="margin-bottom:16px;">
+            <h3 class="section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>Scan result</h3>
+            <div class="scan-result" id="scan-result">
+              <div class="icon-circle"><svg viewBox="0 0 24 24" fill="none" stroke="var(--slate)" stroke-width="2" style="width:20px;height:20px;"><path d="M4 8V5a1 1 0 011-1h3M20 8V5a1 1 0 00-1-1h-3M4 16v3a1 1 0 001 1h3M20 16v3a1 1 0 01-1 1h-3"/></svg></div>
+              <div style="font-weight:600; font-size:13.5px;">Waiting for scan</div>
+              <div class="hint">Start the camera to begin</div>
+            </div>
+          </div>
+          <div class="card card-pad">
+            <h3 class="section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>Recent scans</h3>
+            <div class="scan-log" id="scan-log">
+              <div class="hint">No scans yet this session.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Badge / QR Modal -->
+<div class="overlay" id="badge-overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Student QR Badge</h3>
+      <button class="modal-close" id="badge-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="id-badge" id="badge-content">
+        <div class="hole"></div>
+        <img class="avatar avatar-lg" id="badge-photo">
+        <div class="bname" id="badge-name">—</div>
+        <div class="bmeta" id="badge-meta">—</div>
+        <div class="perforation"></div>
+        <div class="qr-wrap"><div id="badge-qr"></div></div>
+        <div class="sid" id="badge-id">—</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="badge-download">Download PNG</button>
+        <button class="btn btn-primary" id="badge-print">Print</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+/* ---------------- Storage helpers ---------------- */
+const DB = {
+  students(){ return JSON.parse(localStorage.getItem('qras_students')||'[]'); },
+  saveStudents(list){ localStorage.setItem('qras_students', JSON.stringify(list)); },
+  attendance(){ return JSON.parse(localStorage.getItem('qras_attendance')||'[]'); },
+  saveAttendance(list){ localStorage.setItem('qras_attendance', JSON.stringify(list)); },
+  cfg(){ return JSON.parse(localStorage.getItem('qras_emailcfg')||'{}'); },
+  saveCfg(c){ localStorage.setItem('qras_emailcfg', JSON.stringify(c)); }
+};
+
+function uid(prefix){ return prefix+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7); }
+function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function timeStr(){ return new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}); }
+function dateNice(dstr){ const [y,m,d]=dstr.split('-'); return new Date(y,m-1,d).toLocaleDateString(undefined,{month:'short', day:'numeric', year:'numeric'}); }
+
+/* ---------------- Toast ---------------- */
+function toast(msg, type='info'){
+  const c = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast '+type;
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='.3s'; setTimeout(()=>el.remove(),300); }, 3200);
+}
+
+/* ---------------- Navigation ---------------- */
+document.querySelectorAll('.nav-item').forEach(item=>{
+  item.addEventListener('click', ()=> gotoPage(item.dataset.page));
+});
+document.querySelectorAll('[data-goto]').forEach(btn=>{
+  btn.addEventListener('click', ()=> gotoPage(btn.dataset.goto));
+});
+function gotoPage(name){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active', n.dataset.page===name));
+  if(name==='home') renderHome();
+  if(name==='students') renderStudents();
+  if(name==='attendance') renderAttendance();
+  if(name!=='scan') stopScanner();
+}
+
+/* ---------------- Photo upload ---------------- */
+let pendingPhoto = null;
+document.getElementById('photo-drop').addEventListener('click', ()=> document.getElementById('photo-input').click());
+document.getElementById('photo-input').addEventListener('change', e=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    pendingPhoto = reader.result;
+    document.getElementById('photo-preview').src = pendingPhoto;
+    document.getElementById('photo-preview').style.display = 'block';
+    document.getElementById('photo-icon').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+});
+
+/* ---------------- Email config ---------------- */
+(function loadCfg(){
+  let c = DB.cfg();
+  if(!c.serviceId && !c.templateId && !c.publicKey){
+    c = { serviceId:'service_qm3at0q', templateId:'template_r4av1bc', publicKey:'xuSlidi14OXX7w93u' };
+    DB.saveCfg(c);
+  }
+  document.getElementById('cfg-service').value = c.serviceId||'';
+  document.getElementById('cfg-template').value = c.templateId||'';
+  document.getElementById('cfg-key').value = c.publicKey||'';
+})();
+document.getElementById('btn-save-cfg').addEventListener('click', ()=>{
+  const c = {
+    serviceId: document.getElementById('cfg-service').value.trim(),
+    templateId: document.getElementById('cfg-template').value.trim(),
+    publicKey: document.getElementById('cfg-key').value.trim()
+  };
+  DB.saveCfg(c);
+  emailjsInitedKey = null; // force re-init with the new key on next send
+  document.getElementById('cfg-status').textContent = 'Saved.';
+  setTimeout(()=> document.getElementById('cfg-status').textContent='', 2000);
+});
+
+/* ---------------- EmailJS ---------------- */
+let emailjsInitedKey = null;
+
+function emailjsAvailable(){
+  return typeof emailjs !== 'undefined';
+}
+function ensureEmailjsInit(cfg){
+  if(!emailjsAvailable()) return false;
+  if(emailjsInitedKey !== cfg.publicKey){
+    emailjs.init({ publicKey: cfg.publicKey });
+    emailjsInitedKey = cfg.publicKey;
+  }
+  return true;
+}
+function updateEmailjsStatus(){
+  const dot = document.getElementById('emailjs-status-dot');
+  const text = document.getElementById('emailjs-status-text');
+  if(emailjsAvailable()){
+    dot.className = 'status-dot ok';
+    text.textContent = 'EmailJS library loaded and ready.';
+  } else {
+    dot.className = 'status-dot bad';
+    text.textContent = 'EmailJS library failed to load — check your connection and reload the page.';
+  }
+}
+window.addEventListener('load', ()=> setTimeout(updateEmailjsStatus, 200));
+
+function buildQrEmailParams(student){
+  return {
+    to_email: student.email,
+    email: student.email,
+    name: student.name,
+    title: 'Your Attendance QR Code',
+    grade: student.grade + ' - ' + student.section,
+    subject: 'Your Attendance QR Code - ' + student.name,
+    'qr-code': student.qr
+  };
+}
+
+function sendQrEmail(student){
+  const cfg = DB.cfg();
+  if(!(cfg.serviceId && cfg.templateId && cfg.publicKey)){
+    toast('QR generated. Add EmailJS keys in Add Student page to auto-send emails.', 'info');
+    return;
+  }
+  if(!emailjsAvailable()){
+    toast('EmailJS library did not load, so the email was not sent. Check your connection and reload.', 'error');
+    return;
+  }
+  ensureEmailjsInit(cfg);
+  emailjs.send(cfg.serviceId, cfg.templateId, buildQrEmailParams(student))
+    .then(()=>{
+      toast('QR code emailed to '+student.email, 'success');
+    })
+    .catch(err=>{
+      console.error('EmailJS send failed:', err);
+      const detail = (err && (err.text || err.message)) ? (err.text || err.message) : 'Check your EmailJS settings.';
+      toast('Email failed to send: '+detail, 'error');
+    });
+}
+
+document.getElementById('btn-test-email').addEventListener('click', ()=>{
+  const cfg = {
+    serviceId: document.getElementById('cfg-service').value.trim(),
+    templateId: document.getElementById('cfg-template').value.trim(),
+    publicKey: document.getElementById('cfg-key').value.trim()
+  };
+  if(!(cfg.serviceId && cfg.templateId && cfg.publicKey)){
+    toast('Fill in Service ID, Template ID and Public Key first.', 'error');
+    return;
+  }
+  if(!emailjsAvailable()){
+    toast('EmailJS library did not load. Check your connection and reload.', 'error');
+    return;
+  }
+  const testEmail = prompt('Send a test email to:');
+  if(!testEmail) return;
+  ensureEmailjsInit(cfg);
+  emailjs.send(cfg.serviceId, cfg.templateId, buildQrEmailParams({
+    name: 'Test Student', email: testEmail, grade: 'Grade 10', section: 'Aster', qr: ''
+  })).then(()=> toast('Test email sent to '+testEmail, 'success'))
+    .catch(err=>{
+      console.error('EmailJS test send failed:', err);
+      const detail = (err && (err.text || err.message)) ? (err.text || err.message) : 'Check your EmailJS settings.';
+      toast('Test email failed: '+detail, 'error');
+    });
+});
+
+/* ---------------- Add student ---------------- */
+document.getElementById('btn-add-student').addEventListener('click', async ()=>{
+  const name = document.getElementById('in-name').value.trim();
+  const grade = document.getElementById('in-grade').value;
+  const section = document.getElementById('in-section').value.trim();
+  const email = document.getElementById('in-email').value.trim();
+
+  if(!name || !grade || !section || !email){
+    toast('Please fill in name, grade, section, and email.', 'error');
+    return;
+  }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    toast('Please enter a valid email address.', 'error');
+    return;
+  }
+
+  const student = {
+    id: uid('STU'),
+    name, grade, section, email,
+    photo: pendingPhoto || '',
+    createdAt: new Date().toISOString()
+  };
+
+  // Generate QR into an off-screen container, then capture as data URL
+  const tempDiv = document.createElement('div');
+  tempDiv.style.position='fixed'; tempDiv.style.left='-9999px';
+  document.body.appendChild(tempDiv);
+  new QRCode(tempDiv, { text: student.id, width:220, height:220, correctLevel: QRCode.CorrectLevel.M });
+
+  setTimeout(async ()=>{
+    const canvas = tempDiv.querySelector('canvas');
+    student.qr = canvas ? canvas.toDataURL('image/png') : '';
+    document.body.removeChild(tempDiv);
+
+    const list = DB.students();
+    list.push(student);
+    DB.saveStudents(list);
+
+    // reset form
+    document.getElementById('in-name').value='';
+    document.getElementById('in-grade').value='';
+    document.getElementById('in-section').value='';
+    document.getElementById('in-email').value='';
+    document.getElementById('photo-preview').style.display='none';
+    document.getElementById('photo-icon').style.display='block';
+    pendingPhoto = null;
+
+    toast('Student added and QR badge generated.', 'success');
+    renderStudents();
+    renderHome();
+
+    // attempt email send
+    sendQrEmail(student);
+  }, 60);
+});
+
+/* ---------------- Student list rendering ---------------- */
+function populateFilterOptions(){
+  const students = DB.students();
+  const grades = [...new Set(students.map(s=>s.grade))].sort();
+  const sections = [...new Set(students.map(s=>s.section))].sort();
+
+  ['stu-filter-grade','att-filter-grade'].forEach(id=>{
+    const sel = document.getElementById(id);
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">All grades</option>' + grades.map(g=>`<option ${g===cur?'selected':''}>${g}</option>`).join('');
+  });
+  ['stu-filter-section','att-filter-section'].forEach(id=>{
+    const sel = document.getElementById(id);
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">All sections</option>' + sections.map(s=>`<option ${s===cur?'selected':''}>${escapeHtml(s)}</option>`).join('');
+  });
+}
+
+function escapeHtml(str){ const d=document.createElement('div'); d.textContent=str; return d.innerHTML; }
+
+function renderStudents(){
+  populateFilterOptions();
+  const search = document.getElementById('stu-search').value.toLowerCase();
+  const fg = document.getElementById('stu-filter-grade').value;
+  const fs = document.getElementById('stu-filter-section').value;
+
+  let students = DB.students().filter(s=>{
+    const matchSearch = !search || s.name.toLowerCase().includes(search) || s.email.toLowerCase().includes(search);
+    const matchGrade = !fg || s.grade===fg;
+    const matchSection = !fs || s.section===fs;
+    return matchSearch && matchGrade && matchSection;
+  });
+
+  const body = document.getElementById('student-table-body');
+  document.getElementById('student-empty').style.display = students.length? 'none':'block';
+
+  body.innerHTML = students.map(s=>`
+    <tr>
+      <td><div class="name-cell">
+        <img class="avatar" src="${s.photo || fallbackAvatar(s.name)}">
+        <div><div style="font-weight:600;">${escapeHtml(s.name)}</div><div class="hint mono">${s.id}</div></div>
+      </div></td>
+      <td><span class="badge badge-grade">${escapeHtml(s.grade)}</span></td>
+      <td>${escapeHtml(s.section)}</td>
+      <td>${escapeHtml(s.email)}</td>
+      <td><img src="${s.qr}" style="width:38px;height:38px; border-radius:6px; border:1px solid var(--line); cursor:pointer;" onclick="openBadge('${s.id}')"></td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-ghost btn-sm" onclick="openBadge('${s.id}')">View</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteStudent('${s.id}')">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+function fallbackAvatar(name){
+  const initials = name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><rect width='60' height='60' fill='%231B2A4A'/><text x='30' y='38' font-size='22' fill='white' text-anchor='middle' font-family='Sora,sans-serif'>${initials}</text></svg>`;
+  return 'data:image/svg+xml,'+encodeURIComponent(svg);
+}
+document.getElementById('stu-search').addEventListener('input', renderStudents);
+document.getElementById('stu-filter-grade').addEventListener('change', renderStudents);
+document.getElementById('stu-filter-section').addEventListener('change', renderStudents);
+
+function deleteStudent(id){
+  if(!confirm('Delete this student and all their attendance records? This cannot be undone.')) return;
+  DB.saveStudents(DB.students().filter(s=>s.id!==id));
+  DB.saveAttendance(DB.attendance().filter(a=>a.studentId!==id));
+  toast('Student deleted.', 'info');
+  renderStudents(); renderHome();
+}
+
+/* ---------------- Badge modal ---------------- */
+let currentBadgeStudent = null;
+function openBadge(id){
+  const s = DB.students().find(x=>x.id===id);
+  if(!s) return;
+  currentBadgeStudent = s;
+  document.getElementById('badge-photo').src = s.photo || fallbackAvatar(s.name);
+  document.getElementById('badge-name').textContent = s.name;
+  document.getElementById('badge-meta').textContent = s.grade+' • '+s.section;
+  document.getElementById('badge-id').textContent = s.id;
+  const qrHolder = document.getElementById('badge-qr');
+  qrHolder.innerHTML = '';
+  new QRCode(qrHolder, { text: s.id, width:160, height:160, correctLevel: QRCode.CorrectLevel.M });
+  document.getElementById('badge-overlay').classList.add('show');
+}
+document.getElementById('badge-close').addEventListener('click', ()=> document.getElementById('badge-overlay').classList.remove('show'));
+document.getElementById('badge-overlay').addEventListener('click', e=>{ if(e.target.id==='badge-overlay') e.currentTarget.classList.remove('show'); });
+document.getElementById('badge-download').addEventListener('click', ()=>{
+  if(!currentBadgeStudent) return;
+  const a = document.createElement('a');
+  a.href = currentBadgeStudent.qr;
+  a.download = currentBadgeStudent.name.replace(/\s+/g,'_')+'_QR.png';
+  a.click();
+});
+document.getElementById('badge-print').addEventListener('click', ()=>{
+  const content = document.getElementById('badge-content').outerHTML;
+  const w = window.open('', '_blank');
+  w.document.write(`<html><head><title>Badge</title><style>body{font-family:sans-serif; display:flex; justify-content:center; padding:40px;} .id-badge{background:#1B2A4A;color:#fff;border-radius:16px;padding:22px;text-align:center; width:260px;} .avatar-lg{width:76px;height:76px;border-radius:50%;object-fit:cover;} .qr-wrap{background:#fff;padding:12px;border-radius:10px;display:inline-block;margin-top:10px;} .perforation{border-top:2px dashed rgba(255,255,255,.3);margin:16px 0;} .hole{width:34px;height:9px;border-radius:100px;background:rgba(0,0,0,.35);margin:0 auto 14px;}</style></head><body>${content}</body></html>`);
+  w.document.close();
+  setTimeout(()=>w.print(), 300);
+});
+
+/* ---------------- Attendance logic ---------------- */
+function recordScan(studentId){
+  const students = DB.students();
+  const student = students.find(s=>s.id===studentId);
+  if(!student) return {type:'unknown'};
+
+  const attendance = DB.attendance();
+  const today = todayStr();
+  let record = attendance.find(a=> a.studentId===studentId && a.date===today);
+
+  if(!record){
+    record = { id: uid('ATT'), studentId, date: today, timeIn: timeStr(), timeOut: null };
+    attendance.push(record);
+    DB.saveAttendance(attendance);
+    return {type:'in', student, record};
+  } else if(!record.timeOut){
+    record.timeOut = timeStr();
+    DB.saveAttendance(attendance);
+    return {type:'out', student, record};
+  } else {
+    return {type:'done', student, record};
+  }
+}
+
+/* ---------------- Attendance rendering ---------------- */
+document.getElementById('att-filter-date').value = todayStr();
+function renderAttendance(){
+  populateFilterOptions();
+  const fg = document.getElementById('att-filter-grade').value;
+  const fs = document.getElementById('att-filter-section').value;
+  const fd = document.getElementById('att-filter-date').value;
+
+  const students = DB.students();
+  const studentMap = Object.fromEntries(students.map(s=>[s.id,s]));
+
+  let records = DB.attendance().filter(r=>{
+    const s = studentMap[r.studentId];
+    if(!s) return false;
+    if(fg && s.grade!==fg) return false;
+    if(fs && s.section!==fs) return false;
+    if(fd && r.date!==fd) return false;
+    return true;
+  });
+  records.sort((a,b)=> b.date.localeCompare(a.date) || (a.timeIn||'').localeCompare(b.timeIn||''));
+
+  const body = document.getElementById('attendance-table-body');
+  document.getElementById('attendance-empty').style.display = records.length? 'none':'block';
+
+  body.innerHTML = records.map(r=>{
+    const s = studentMap[r.studentId];
+    const status = r.timeOut ? `<span class="badge badge-out">Completed</span>` : `<span class="badge badge-pending">In progress</span>`;
+    return `<tr>
+      <td><div class="name-cell"><img class="avatar" src="${s.photo||fallbackAvatar(s.name)}"><div style="font-weight:600;">${escapeHtml(s.name)}</div></div></td>
+      <td><span class="badge badge-grade">${escapeHtml(s.grade)}</span></td>
+      <td>${escapeHtml(s.section)}</td>
+      <td>${dateNice(r.date)}</td>
+      <td><span class="badge badge-in">${r.timeIn||'—'}</span></td>
+      <td>${r.timeOut? `<span class="badge badge-out">${r.timeOut}</span>` : '<span class="hint">—</span>'}</td>
+      <td>${status}</td>
+    </tr>`;
+  }).join('');
+}
+document.getElementById('att-filter-grade').addEventListener('change', renderAttendance);
+document.getElementById('att-filter-section').addEventListener('change', renderAttendance);
+document.getElementById('att-filter-date').addEventListener('change', renderAttendance);
+document.getElementById('att-clear-date').addEventListener('click', ()=>{ document.getElementById('att-filter-date').value=''; renderAttendance(); });
+
+/* ---------------- Excel export ---------------- */
+function buildRows(records, studentMap){
+  return records.map(r=>{
+    const s = studentMap[r.studentId] || {};
+    return {
+      'Student ID': r.studentId,
+      'Name': s.name||'', 'Grade': s.grade||'', 'Section': s.section||'',
+      'Date': r.date, 'Time In': r.timeIn||'', 'Time Out': r.timeOut||'',
+      'Status': r.timeOut? 'Completed':'In progress'
+    };
+  });
+}
+document.getElementById('btn-export-filtered').addEventListener('click', ()=>{
+  const fg = document.getElementById('att-filter-grade').value;
+  const fs = document.getElementById('att-filter-section').value;
+  const fd = document.getElementById('att-filter-date').value;
+  const students = DB.students();
+  const studentMap = Object.fromEntries(students.map(s=>[s.id,s]));
+  let records = DB.attendance().filter(r=>{
+    const s = studentMap[r.studentId];
+    if(!s) return false;
+    if(fg && s.grade!==fg) return false;
+    if(fs && s.section!==fs) return false;
+    if(fd && r.date!==fd) return false;
+    return true;
+  });
+  if(!records.length){ toast('No records to export for the current view.', 'error'); return; }
+  const rows = buildRows(records, studentMap);
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  const sheetName = (fg||'All')+'-'+(fs||'All');
+  XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0,31));
+  XLSX.writeFile(wb, `Attendance_${fg||'All'}_${fs||'All'}_${fd||'AllDates'}.xlsx`);
+  toast('Excel file downloaded.', 'success');
+});
+document.getElementById('btn-export-all').addEventListener('click', ()=>{
+  const students = DB.students();
+  const studentMap = Object.fromEntries(students.map(s=>[s.id,s]));
+  const records = DB.attendance();
+  if(!records.length){ toast('No attendance records yet.', 'error'); return; }
+
+  const groups = {};
+  records.forEach(r=>{
+    const s = studentMap[r.studentId];
+    if(!s) return;
+    const key = s.grade+' - '+s.section;
+    groups[key] = groups[key] || [];
+    groups[key].push(r);
+  });
+
+  const wb = XLSX.utils.book_new();
+  Object.keys(groups).sort().forEach(key=>{
+    const rows = buildRows(groups[key], studentMap);
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, key.replace(/[\\\/\?\*\[\]:]/g,'-').slice(0,31));
+  });
+  XLSX.writeFile(wb, `Attendance_AllGroups_${todayStr()}.xlsx`);
+  toast('Excel file downloaded with one sheet per grade & section.', 'success');
+});
+
+/* ---------------- Home dashboard ---------------- */
+function renderHome(){
+  document.getElementById('today-date-line').textContent = 'Today is ' + new Date().toLocaleDateString(undefined,{weekday:'long', month:'long', day:'numeric', year:'numeric'});
+  const students = DB.students();
+  const today = todayStr();
+  const todays = DB.attendance().filter(a=>a.date===today);
+  const studentMap = Object.fromEntries(students.map(s=>[s.id,s]));
+
+  document.getElementById('stat-total').textContent = students.length;
+  document.getElementById('stat-present').textContent = todays.length;
+  document.getElementById('stat-pending').textContent = todays.filter(a=>!a.timeOut).length;
+  const groups = new Set(students.map(s=>s.grade+'-'+s.section));
+  document.getElementById('stat-sections').textContent = groups.size;
+
+  const body = document.getElementById('home-activity-body');
+  const sorted = [...todays].sort((a,b)=> (b.timeIn||'').localeCompare(a.timeIn||''));
+  document.getElementById('home-activity-empty').style.display = sorted.length? 'none':'block';
+  body.innerHTML = sorted.map(r=>{
+    const s = studentMap[r.studentId]||{};
+    return `<tr>
+      <td><div class="name-cell"><img class="avatar" src="${s.photo||fallbackAvatar(s.name||'?')}"><div style="font-weight:600;">${escapeHtml(s.name||'Unknown')}</div></div></td>
+      <td><span class="badge badge-grade">${escapeHtml(s.grade||'')}</span> ${escapeHtml(s.section||'')}</td>
+      <td><span class="badge badge-in">${r.timeIn||'—'}</span></td>
+      <td>${r.timeOut? `<span class="badge badge-out">${r.timeOut}</span>`:'<span class="hint">Not yet</span>'}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ---------------- QR Scanner ---------------- */
+let html5QrCode = null;
+let scanning = false;
+const lastScanTime = {}; // debounce per student
+const SCAN_COOLDOWN_MS = 4000;
+
+document.getElementById('btn-start-scan').addEventListener('click', startScanner);
+document.getElementById('btn-stop-scan').addEventListener('click', stopScanner);
+
+function startScanner(){
+  if(scanning) return;
+  html5QrCode = new Html5Qrcode('qr-reader');
+  Html5Qrcode.getCameras().then(cams=>{
+    if(!cams || !cams.length){ toast('No camera found on this device.', 'error'); return; }
+    const camId = cams[cams.length-1].id;
+    html5QrCode.start(
+      camId,
+      { fps: 10, qrbox: 220 },
+      onScanSuccess,
+      ()=>{}
+    ).then(()=>{
+      scanning = true;
+      document.getElementById('btn-start-scan').disabled = true;
+      document.getElementById('btn-stop-scan').disabled = false;
+    }).catch(()=> toast('Could not start camera. Check permissions.', 'error'));
+  }).catch(()=> toast('Camera access denied or unavailable.', 'error'));
+}
+function stopScanner(){
+  if(html5QrCode && scanning){
+    html5QrCode.stop().then(()=>{
+      html5QrCode.clear();
+      scanning = false;
+      document.getElementById('btn-start-scan').disabled = false;
+      document.getElementById('btn-stop-scan').disabled = true;
+    }).catch(()=>{});
+  }
+}
+
+function onScanSuccess(decodedText){
+  const now = Date.now();
+  if(lastScanTime[decodedText] && now - lastScanTime[decodedText] < SCAN_COOLDOWN_MS) return;
+  lastScanTime[decodedText] = now;
+
+  const result = recordScan(decodedText);
+  const panel = document.getElementById('scan-result');
+  panel.classList.remove('flash-in','flash-out','flash-err');
+
+  if(result.type==='unknown'){
+    panel.classList.add('flash-err');
+    panel.innerHTML = `<div class="icon-circle"><svg viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" style="width:20px;height:20px;"><path d="M18 6L6 18M6 6l12 12"/></svg></div><div style="font-weight:700;">Unrecognized QR code</div><div class="hint">This code doesn't match any registered student.</div>`;
+    logScan('Unknown code', 'Not registered', 'err');
+    return;
+  }
+  const s = result.student;
+  if(result.type==='in'){
+    panel.classList.add('flash-in');
+    panel.innerHTML = `<div class="icon-circle"><svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" style="width:20px;height:20px;"><path d="M20 6L9 17l-5-5"/></svg></div><div style="font-weight:700;">${escapeHtml(s.name)}</div><div class="hint">Timed IN at ${result.record.timeIn}</div>`;
+    logScan(s.name, 'Time in • '+result.record.timeIn, 'in');
+  } else if(result.type==='out'){
+    panel.classList.add('flash-out');
+    panel.innerHTML = `<div class="icon-circle"><svg viewBox="0 0 24 24" fill="none" stroke="#3457D5" stroke-width="2" style="width:20px;height:20px;"><path d="M20 6L9 17l-5-5"/></svg></div><div style="font-weight:700;">${escapeHtml(s.name)}</div><div class="hint">Timed OUT at ${result.record.timeOut}</div>`;
+    logScan(s.name, 'Time out • '+result.record.timeOut, 'out');
+  } else {
+    panel.classList.add('flash-err');
+    panel.innerHTML = `<div class="icon-circle"><svg viewBox="0 0 24 24" fill="none" stroke="var(--amber-dark)" stroke-width="2" style="width:20px;height:20px;"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div><div style="font-weight:700;">${escapeHtml(s.name)}</div><div class="hint">Already completed attendance for today</div>`;
+    logScan(s.name, 'Already completed today', 'err');
+  }
+  renderHome();
+}
+
+function logScan(name, detail, type){
+  const log = document.getElementById('scan-log');
+  if(log.querySelector('.hint')) log.innerHTML='';
+  const item = document.createElement('div');
+  item.className = 'scan-log-item';
+  const color = type==='in' ? 'var(--green)' : type==='out' ? '#3457D5' : 'var(--red)';
+  item.innerHTML = `<span>${escapeHtml(name)}</span><span style="color:${color}; font-weight:600;">${escapeHtml(detail)}</span>`;
+  log.prepend(item);
+}
+
+/* ---------------- Init ---------------- */
+updateEmailjsStatus();
+renderHome();
+renderStudents();
+renderAttendance();
+</script>
+</body>
+</html>
