@@ -98,6 +98,8 @@
   .grid{display:grid; gap:16px;}
   .grid-4{grid-template-columns:repeat(4,1fr);}
   .grid-2{grid-template-columns:1.3fr .9fr;}
+  #add-student-grid{grid-template-columns:1fr;}
+  #add-student-card{padding:32px;}
   @media(max-width:900px){.grid-4{grid-template-columns:repeat(2,1fr);} .grid-2{grid-template-columns:1fr;}}
 
   .card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow);}
@@ -402,8 +404,8 @@
         </div>
       </div>
 
-      <div class="grid grid-2">
-        <div class="card card-pad">
+      <div class="grid grid-2" id="add-student-grid">
+        <div class="card card-pad" id="add-student-card">
           <div class="photo-upload">
             <label class="photo-drop" id="photo-drop">
               <img id="photo-preview" style="display:none;">
