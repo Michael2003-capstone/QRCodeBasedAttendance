@@ -491,6 +491,7 @@
         </div>
         <div style="display:flex; gap:10px;">
           <button class="btn btn-primary" id="btn-start-scan">Start camera</button>
+          <button class="btn btn-ghost" id="btn-flip-camera">Flip camera</button>
           <button class="btn btn-ghost" id="btn-stop-scan" disabled>Stop</button>
         </div>
       </div>
@@ -1144,18 +1145,20 @@ function renderHome(){
 /* ---------------- QR Scanner ---------------- */
 let html5QrCode = null;
 let scanning = false;
+let currentFacingMode = 'user';
 const lastScanTime = {}; // debounce per student
 const SCAN_COOLDOWN_MS = 4000;
 
 document.getElementById('btn-start-scan').addEventListener('click', startScanner);
 document.getElementById('btn-stop-scan').addEventListener('click', stopScanner);
+document.getElementById('btn-flip-camera').addEventListener('click', flipCamera);
 
 function startScanner(){
   if(scanning) return;
   html5QrCode = new Html5Qrcode('qr-reader');
 
   html5QrCode.start(
-    { facingMode: "user" }, 
+    { facingMode: currentFacingMode },
     { fps: 10, qrbox: 220 },
     onScanSuccess,
     ()=>{}
@@ -1165,15 +1168,49 @@ function startScanner(){
     document.getElementById('btn-stop-scan').disabled = false;
   }).catch(()=> toast('Could not start camera. Check permissions.', 'error'));
 }
+
 function stopScanner(){
-  if(html5QrCode && scanning){
-    html5QrCode.stop().then(()=>{
-      html5QrCode.clear();
-      scanning = false;
-      document.getElementById('btn-start-scan').disabled = false;
-      document.getElementById('btn-stop-scan').disabled = true;
-    }).catch(()=>{});
+  return new Promise((resolve)=>{
+    if(html5QrCode && scanning){
+      html5QrCode.stop().then(()=>{
+        html5QrCode.clear();
+        scanning = false;
+        document.getElementById('btn-start-scan').disabled = false;
+        document.getElementById('btn-stop-scan').disabled = true;
+        resolve();
+      }).catch(()=> resolve());
+    } else {
+      resolve();
+    }
+  });
+}
+
+async function flipCamera(){
+  currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+  const wasScanning = scanning;
+  if(wasScanning){
+    await stopScanner();
+    startScanner();
   }
+  toast(`Switched to ${currentFacingMode === 'user' ? 'front' : 'back'} camera.`, 'info');
+}
+
+function playBeep(){
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.18);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.2);
+    osc.onended = ()=> ctx.close();
+  }catch(err){ /* Web Audio not available */ }
 }
 
 async function onScanSuccess(decodedText){
@@ -1193,10 +1230,12 @@ async function onScanSuccess(decodedText){
   }
   const s = result.student;
   if(result.type==='in'){
+    playBeep();
     panel.classList.add('flash-in');
     panel.innerHTML = `<div class="icon-circle"><svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" style="width:20px;height:20px;"><path d="M20 6L9 17l-5-5"/></svg></div><div style="font-weight:700;">${escapeHtml(s.name)}</div><div class="hint">Timed IN at ${result.record.timeIn}</div>`;
     logScan(s.name, 'Time in • '+result.record.timeIn, 'in');
   } else if(result.type==='out'){
+    playBeep();
     panel.classList.add('flash-out');
     panel.innerHTML = `<div class="icon-circle"><svg viewBox="0 0 24 24" fill="none" stroke="#3457D5" stroke-width="2" style="width:20px;height:20px;"><path d="M20 6L9 17l-5-5"/></svg></div><div style="font-weight:700;">${escapeHtml(s.name)}</div><div class="hint">Timed OUT at ${result.record.timeOut}</div>`;
     logScan(s.name, 'Time out • '+result.record.timeOut, 'out');
