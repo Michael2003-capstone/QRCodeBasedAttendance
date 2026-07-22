@@ -11,6 +11,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root{
     --ink:#1B2A4A;
@@ -238,7 +239,33 @@
 </head>
 <body>
 
-<div class="app">
+<!-- LOGIN SCREEN -->
+<div id="login-overlay" style="min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--paper); padding:20px;">
+  <div class="card card-pad" style="width:100%; max-width:340px;">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:22px;">
+      <div class="brand-mark">R</div>
+      <div>
+        <div style="font-family:'Sora'; font-weight:700; font-size:16.5px; color:var(--ink);">Roll Call</div>
+        <span style="font-size:10.5px; color:var(--slate); text-transform:uppercase; letter-spacing:.6px;">QR Attendance</span>
+      </div>
+    </div>
+    <form id="login-form">
+      <div class="field">
+        <label for="login-email">Email</label>
+        <input type="email" id="login-email" required autocomplete="username">
+      </div>
+      <div class="field" style="margin-bottom:8px;">
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" required autocomplete="current-password">
+      </div>
+      <div id="login-error" style="color:var(--red); font-size:12.5px; min-height:16px; margin-bottom:10px;"></div>
+      <button type="submit" class="btn btn-amber" id="login-btn" style="width:100%; justify-content:center;">Log In</button>
+    </form>
+    <div class="hint" style="margin-top:14px; text-align:center;">Ask your administrator for an account if you don't have one yet.</div>
+  </div>
+</div>
+
+<div class="app" id="app-root" style="display:none;">
   <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="brand">
@@ -270,7 +297,10 @@
         <span>Scan QR</span>
       </div>
     </nav>
-    <div class="nav-foot">All data stored locally in this browser.</div>
+    <div class="nav-foot">
+      <div id="logged-in-as" style="margin-bottom:8px; word-break:break-all;"></div>
+      <button id="btn-logout" class="btn btn-ghost btn-sm" style="width:100%; justify-content:center; background:transparent; color:#fff; border-color:rgba(255,255,255,.25);">Log out</button>
+    </div>
   </aside>
 
   <!-- MAIN -->
@@ -522,20 +552,102 @@
 <div id="toast-container"></div>
 
 <script>
+/* ---------------- Supabase client ---------------- */
+const SUPABASE_URL = 'https://idewxgfbcmtrukdiuxim.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_mabd4asnTjUxvSUWbcwIKA_T2q5wKbN';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 /* ---------------- Storage helpers ---------------- */
+let cachedStudents = [];
+let cachedAttendance = [];
+
+function rowToStudent(r){
+  return { id:r.id, name:r.name, grade:r.grade, section:r.section, email:r.email, qr:r.qr_data||'', photo:r.photo_url||'', createdAt:r.created_at };
+}
+function rowToAttendance(r){
+  return { id:r.id, studentId:r.student_id, date:r.date, timeIn:r.time_in, timeOut:r.time_out };
+}
+
 const DB = {
-  students(){ return JSON.parse(localStorage.getItem('qras_students')||'[]'); },
-  saveStudents(list){ localStorage.setItem('qras_students', JSON.stringify(list)); },
-  attendance(){ return JSON.parse(localStorage.getItem('qras_attendance')||'[]'); },
-  saveAttendance(list){ localStorage.setItem('qras_attendance', JSON.stringify(list)); },
+  students(){ return cachedStudents; },
+  attendance(){ return cachedAttendance; },
   cfg(){ return JSON.parse(localStorage.getItem('qras_emailcfg')||'{}'); },
   saveCfg(c){ localStorage.setItem('qras_emailcfg', JSON.stringify(c)); }
 };
+
+async function loadAllData(){
+  const [{ data: students, error: sErr }, { data: attendance, error: aErr }] = await Promise.all([
+    sb.from('students').select('*').order('created_at'),
+    sb.from('attendance').select('*')
+  ]);
+  if(sErr) toast('Failed to load students: '+sErr.message, 'error');
+  if(aErr) toast('Failed to load attendance: '+aErr.message, 'error');
+  cachedStudents = (students||[]).map(rowToStudent);
+  cachedAttendance = (attendance||[]).map(rowToAttendance);
+}
+
+async function uploadStudentPhoto(studentId, dataUrl){
+  if(!dataUrl) return '';
+  try{
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const ext = (blob.type.split('/')[1] || 'png').split('+')[0];
+    const path = `${studentId}.${ext}`;
+    const { error } = await sb.storage.from('student-photos').upload(path, blob, { upsert:true, contentType: blob.type });
+    if(error){ toast('Photo upload failed: '+error.message, 'error'); return ''; }
+    const { data } = sb.storage.from('student-photos').getPublicUrl(path);
+    return data.publicUrl || '';
+  }catch(err){
+    console.error('Photo upload error:', err);
+    toast('Photo upload failed.', 'error');
+    return '';
+  }
+}
 
 function uid(prefix){ return prefix+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7); }
 function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function timeStr(){ return new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}); }
 function dateNice(dstr){ const [y,m,d]=dstr.split('-'); return new Date(y,m-1,d).toLocaleDateString(undefined,{month:'short', day:'numeric', year:'numeric'}); }
+
+/* ---------------- Auth ---------------- */
+let appDataLoaded = false;
+
+document.getElementById('login-form').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const btn = document.getElementById('login-btn');
+  const errEl = document.getElementById('login-error');
+  errEl.textContent = '';
+  btn.disabled = true; btn.textContent = 'Logging in...';
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  btn.disabled = false; btn.textContent = 'Log In';
+  if(error){ errEl.textContent = error.message; }
+});
+
+document.getElementById('btn-logout').addEventListener('click', ()=>{
+  sb.auth.signOut();
+});
+
+sb.auth.onAuthStateChange(async (event, session)=>{
+  if(session){
+    document.getElementById('login-overlay').style.display = 'none';
+    document.getElementById('app-root').style.display = 'flex';
+    document.getElementById('logged-in-as').textContent = session.user.email;
+    if(!appDataLoaded){
+      appDataLoaded = true;
+      await loadAllData();
+      renderHome();
+      renderStudents();
+      renderAttendance();
+    }
+  } else {
+    document.getElementById('app-root').style.display = 'none';
+    document.getElementById('login-overlay').style.display = 'flex';
+    document.getElementById('login-form').reset();
+    appDataLoaded = false;
+  }
+});
 
 /* ---------------- Toast ---------------- */
 function toast(msg, type='info'){
@@ -714,6 +826,9 @@ document.getElementById('btn-add-student').addEventListener('click', async ()=>{
     createdAt: new Date().toISOString()
   };
 
+  const addBtn = document.getElementById('btn-add-student');
+  addBtn.disabled = true;
+
   // Generate QR into an off-screen container, then capture as data URL
   const tempDiv = document.createElement('div');
   tempDiv.style.position='fixed'; tempDiv.style.left='-9999px';
@@ -725,9 +840,24 @@ document.getElementById('btn-add-student').addEventListener('click', async ()=>{
     student.qr = canvas ? canvas.toDataURL('image/png') : '';
     document.body.removeChild(tempDiv);
 
-    const list = DB.students();
-    list.push(student);
-    DB.saveStudents(list);
+    // Upload photo to Supabase Storage (if provided), then save the record
+    const photoUrl = await uploadStudentPhoto(student.id, pendingPhoto);
+    student.photo = photoUrl;
+
+    const { error } = await sb.from('students').insert({
+      id: student.id, name: student.name, grade: student.grade,
+      section: student.section, email: student.email,
+      photo_url: student.photo || null, qr_data: student.qr
+    });
+
+    addBtn.disabled = false;
+
+    if(error){
+      toast('Failed to save student: '+error.message, 'error');
+      return;
+    }
+
+    cachedStudents.push(student);
 
     // reset form
     document.getElementById('in-name').value='';
@@ -809,10 +939,12 @@ document.getElementById('stu-search').addEventListener('input', renderStudents);
 document.getElementById('stu-filter-grade').addEventListener('change', renderStudents);
 document.getElementById('stu-filter-section').addEventListener('change', renderStudents);
 
-function deleteStudent(id){
+async function deleteStudent(id){
   if(!confirm('Delete this student and all their attendance records? This cannot be undone.')) return;
-  DB.saveStudents(DB.students().filter(s=>s.id!==id));
-  DB.saveAttendance(DB.attendance().filter(a=>a.studentId!==id));
+  const { error } = await sb.from('students').delete().eq('id', id);
+  if(error){ toast('Failed to delete student: '+error.message, 'error'); return; }
+  cachedStudents = cachedStudents.filter(s=>s.id!==id);
+  cachedAttendance = cachedAttendance.filter(a=>a.studentId!==id);
   toast('Student deleted.', 'info');
   renderStudents(); renderHome();
 }
@@ -850,23 +982,28 @@ document.getElementById('badge-print').addEventListener('click', ()=>{
 });
 
 /* ---------------- Attendance logic ---------------- */
-function recordScan(studentId){
-  const students = DB.students();
-  const student = students.find(s=>s.id===studentId);
+async function recordScan(studentId){
+  const student = cachedStudents.find(s=>s.id===studentId);
   if(!student) return {type:'unknown'};
 
-  const attendance = DB.attendance();
   const today = todayStr();
-  let record = attendance.find(a=> a.studentId===studentId && a.date===today);
+  let record = cachedAttendance.find(a=> a.studentId===studentId && a.date===today);
 
   if(!record){
-    record = { id: uid('ATT'), studentId, date: today, timeIn: timeStr(), timeOut: null };
-    attendance.push(record);
-    DB.saveAttendance(attendance);
+    const timeIn = timeStr();
+    const newId = uid('ATT');
+    const { error } = await sb.from('attendance').insert({
+      id: newId, student_id: studentId, date: today, time_in: timeIn, time_out: null
+    });
+    if(error){ toast('Failed to record attendance: '+error.message, 'error'); return {type:'unknown'}; }
+    record = { id:newId, studentId, date:today, timeIn, timeOut:null };
+    cachedAttendance.push(record);
     return {type:'in', student, record};
   } else if(!record.timeOut){
-    record.timeOut = timeStr();
-    DB.saveAttendance(attendance);
+    const timeOut = timeStr();
+    const { error } = await sb.from('attendance').update({ time_out: timeOut }).eq('id', record.id);
+    if(error){ toast('Failed to record attendance: '+error.message, 'error'); return {type:'unknown'}; }
+    record.timeOut = timeOut;
     return {type:'out', student, record};
   } else {
     return {type:'done', student, record};
@@ -1039,12 +1176,12 @@ function stopScanner(){
   }
 }
 
-function onScanSuccess(decodedText){
+async function onScanSuccess(decodedText){
   const now = Date.now();
   if(lastScanTime[decodedText] && now - lastScanTime[decodedText] < SCAN_COOLDOWN_MS) return;
   lastScanTime[decodedText] = now;
 
-  const result = recordScan(decodedText);
+  const result = await recordScan(decodedText);
   const panel = document.getElementById('scan-result');
   panel.classList.remove('flash-in','flash-out','flash-err');
 
@@ -1083,9 +1220,6 @@ function logScan(name, detail, type){
 
 /* ---------------- Init ---------------- */
 updateEmailjsStatus();
-renderHome();
-renderStudents();
-renderAttendance();
 </script>
 </body>
 </html>
